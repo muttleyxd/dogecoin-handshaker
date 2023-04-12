@@ -2,14 +2,67 @@ pub mod header;
 pub mod messages;
 pub mod serializer;
 
-#[allow(dead_code)] // Main and RegressionTest are not used outside of unit tests
+#[derive(Clone, Debug)]
+pub enum NetworkSerializationError {
+    BufferTooShort,
+    UnknownBytes,
+    HeaderParseError(HeaderBuildError),
+    StringParseError,
+}
+
+impl Display for NetworkSerializationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkSerializationError::BufferTooShort => write!(f, "Buffer too short"),
+            NetworkSerializationError::UnknownBytes => write!(f, "Unknown bytes"),
+            NetworkSerializationError::HeaderParseError(e) => {
+                write!(f, "Header parse error: {}", e)
+            }
+            NetworkSerializationError::StringParseError => write!(f, "String parse error"),
+        }
+    }
+}
+
+impl std::error::Error for NetworkSerializationError {}
+
+pub trait NetworkSerializable<T: Sized> {
+    fn from_network_bytes(bytes: &[u8]) -> Result<T, NetworkSerializationError>;
+    fn to_network_bytes(&self) -> Result<Vec<u8>, NetworkSerializationError>;
+}
+
+#[derive(Debug, PartialEq)]
 pub enum NetworkType {
     Main,
     Test,
     RegressionTest,
 }
 
+impl NetworkSerializable<NetworkType> for NetworkType {
+    fn from_network_bytes(bytes: &[u8]) -> Result<NetworkType, NetworkSerializationError> {
+        if bytes == [0xC0, 0xC0, 0xC0, 0xC0] {
+            Ok(NetworkType::Main)
+        } else if bytes == [0xFC, 0xC1, 0xB7, 0xDC] {
+            Ok(NetworkType::Test)
+        } else if bytes == [0xFA, 0xBF, 0xB5, 0xDA] {
+            Ok(NetworkType::RegressionTest)
+        } else {
+            Err(NetworkSerializationError::UnknownBytes)
+        }
+    }
+
+    fn to_network_bytes(&self) -> Result<Vec<u8>, NetworkSerializationError> {
+        match self {
+            NetworkType::Main => Ok(vec![0xC0, 0xC0, 0xC0, 0xC0]),
+            NetworkType::Test => Ok(vec![0xFC, 0xC1, 0xB7, 0xDC]),
+            NetworkType::RegressionTest => Ok(vec![0xFA, 0xBF, 0xB5, 0xDA]),
+        }
+    }
+}
+
+use crate::dogecoin::header::HeaderBuildError;
 use bitcoin_hashes::Hash;
+use std::fmt::{Debug, Display, Formatter};
+
 fn calculate_message_hash(message: &[u8]) -> [u8; 4] {
     let hash = bitcoin_hashes::sha256d::Hash::hash(message);
     [hash[0], hash[1], hash[2], hash[3]]
@@ -25,6 +78,12 @@ impl std::fmt::Display for IntegerParsingFailure {
 }
 
 impl std::error::Error for IntegerParsingFailure {}
+
+impl From<IntegerParsingFailure> for NetworkSerializationError {
+    fn from(_: IntegerParsingFailure) -> Self {
+        NetworkSerializationError::StringParseError
+    }
+}
 
 fn string_to_ip(ip_address: &str) -> Option<[u8; 4]> {
     let splits = ip_address.split('.').collect::<Vec<&str>>();

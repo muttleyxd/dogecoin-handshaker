@@ -1,3 +1,5 @@
+use crate::dogecoin::messages::version::IpAddress;
+use crate::dogecoin::{IntegerParsingFailure, NetworkSerializationError};
 use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 
@@ -18,6 +20,46 @@ impl Display for CalculateSizeOfSerializedStringAndLengthBytesError {
 
 impl std::error::Error for CalculateSizeOfSerializedStringAndLengthBytesError {}
 
+impl From<CalculateSizeOfSerializedStringAndLengthBytesError> for NetworkSerializationError {
+    fn from(value: CalculateSizeOfSerializedStringAndLengthBytesError) -> Self {
+        match value {
+            CalculateSizeOfSerializedStringAndLengthBytesError::StringTooLong => {
+                NetworkSerializationError::StringParseError
+            }
+        }
+    }
+}
+
+pub fn slice_to_ip_address(slice: &[u8]) -> Option<IpAddress> {
+    slice.try_into().ok()
+}
+
+pub fn be_slice_to_u16(slice: &[u8]) -> Option<u16> {
+    Some(u16::from_be_bytes(slice.try_into().ok()?))
+}
+
+pub fn slice_to_u16(slice: &[u8]) -> Option<u16> {
+    Some(u16::from_le_bytes(slice.try_into().ok()?))
+}
+
+pub fn slice_to_u32(slice: &[u8]) -> Option<u32> {
+    Some(u32::from_le_bytes(slice.try_into().ok()?))
+}
+
+pub fn slice_to_u64(slice: &[u8]) -> Option<u64> {
+    Some(u64::from_le_bytes(slice.try_into().ok()?))
+}
+
+pub fn slice_to_string(slice: &[u8]) -> String {
+    slice
+        .iter()
+        .filter_map(|byte| match *byte {
+            0 => None,
+            _ => Some(*byte as char),
+        })
+        .collect()
+}
+
 pub fn calculate_size_of_serialized_string_and_length_bytes(
     length: usize,
 ) -> Result<usize, CalculateSizeOfSerializedStringAndLengthBytesError> {
@@ -34,13 +76,51 @@ pub fn calculate_size_of_serialized_string_and_length_bytes(
     }
 }
 
+#[derive(PartialEq)]
+pub struct SerializedStringResult {
+    pub bytes_read: usize,
+    pub value: String,
+}
+
 pub trait SerializeString {
+    fn from_dogecoin_bytes(slice: &[u8]) -> Result<SerializedStringResult, IntegerParsingFailure>;
+
     fn to_dogecoin_bytes(
         &self,
     ) -> Result<Vec<u8>, CalculateSizeOfSerializedStringAndLengthBytesError>;
 }
 
 impl SerializeString for String {
+    fn from_dogecoin_bytes(slice: &[u8]) -> Result<SerializedStringResult, IntegerParsingFailure> {
+        let mut offset: usize = 0;
+        let length: usize;
+
+        let first_byte = slice[0];
+        if first_byte == 0 {
+            return Ok(SerializedStringResult {
+                bytes_read: offset,
+                value: "".to_string(),
+            });
+        } else if first_byte < 253 {
+            offset = 1;
+            length = first_byte as usize;
+        } else if first_byte == 253 {
+            length = slice_to_u16(&slice[1..3]).ok_or(IntegerParsingFailure)? as usize;
+            offset = 3;
+        } else if first_byte == 254 {
+            length = slice_to_u32(&slice[1..5]).ok_or(IntegerParsingFailure)? as usize;
+            offset = 5;
+        } else {
+            length = slice_to_u64(&slice[1..9]).ok_or(IntegerParsingFailure)? as usize;
+            offset = 9;
+        }
+
+        Ok(SerializedStringResult {
+            bytes_read: offset + length,
+            value: slice_to_string(&slice[offset..offset + length]),
+        })
+    }
+
     fn to_dogecoin_bytes(
         &self,
     ) -> Result<Vec<u8>, CalculateSizeOfSerializedStringAndLengthBytesError> {
@@ -115,6 +195,18 @@ mod tests {
     }
 
     #[test]
+    fn test_slice_to_string() {
+        let bytes: [u8; 4] = [0, 0, 0, 0];
+        assert_eq!("", slice_to_string(&bytes));
+
+        let bytes: [u8; 4] = [b'a', 0, 0, 0];
+        assert_eq!("a", slice_to_string(&bytes));
+
+        let bytes: [u8; 4] = [b'a', b'b', b'c', b'd'];
+        assert_eq!("abcd", slice_to_string(&bytes));
+    }
+
+    #[test]
     fn test_serialize_string() {
         assert_eq!(
             &[5, 'H' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8],
@@ -145,6 +237,18 @@ mod tests {
                 .to_dogecoin_bytes()
                 .unwrap()
                 .as_slice()
+        );
+    }
+
+    #[test]
+    fn test_deserialize_string() {
+        assert_eq!(
+            String::from_dogecoin_bytes(&[
+                5, 'H' as u8, 'e' as u8, 'l' as u8, 'l' as u8, 'o' as u8
+            ])
+            .unwrap()
+            .value,
+            "Hello"
         );
     }
 }
