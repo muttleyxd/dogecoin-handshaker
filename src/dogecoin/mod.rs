@@ -1,36 +1,21 @@
+pub mod errors;
 pub mod header;
 pub mod messages;
+pub mod node_connection_agent;
 pub mod serializer;
 
-#[derive(Clone, Debug)]
-pub enum NetworkSerializationError {
-    BufferTooShort,
-    UnknownBytes,
-    HeaderParseError(HeaderBuildError),
-    StringParseError,
-}
+use bitcoin_hashes::Hash;
 
-impl Display for NetworkSerializationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NetworkSerializationError::BufferTooShort => write!(f, "Buffer too short"),
-            NetworkSerializationError::UnknownBytes => write!(f, "Unknown bytes"),
-            NetworkSerializationError::HeaderParseError(e) => {
-                write!(f, "Header parse error: {}", e)
-            }
-            NetworkSerializationError::StringParseError => write!(f, "String parse error"),
-        }
-    }
-}
+use errors::*;
 
-impl std::error::Error for NetworkSerializationError {}
+pub type IpAddress = [u8; 16];
 
 pub trait NetworkSerializable<T: Sized> {
     fn from_network_bytes(bytes: &[u8]) -> Result<T, NetworkSerializationError>;
     fn to_network_bytes(&self) -> Result<Vec<u8>, NetworkSerializationError>;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum NetworkType {
     Main,
     Test,
@@ -59,30 +44,9 @@ impl NetworkSerializable<NetworkType> for NetworkType {
     }
 }
 
-use crate::dogecoin::header::HeaderBuildError;
-use bitcoin_hashes::Hash;
-use std::fmt::{Debug, Display, Formatter};
-
 fn calculate_message_hash(message: &[u8]) -> [u8; 4] {
     let hash = bitcoin_hashes::sha256d::Hash::hash(message);
     [hash[0], hash[1], hash[2], hash[3]]
-}
-
-#[derive(Debug, PartialEq)]
-pub struct IntegerParsingFailure;
-
-impl std::fmt::Display for IntegerParsingFailure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Integer parsing failure")
-    }
-}
-
-impl std::error::Error for IntegerParsingFailure {}
-
-impl From<IntegerParsingFailure> for NetworkSerializationError {
-    fn from(_: IntegerParsingFailure) -> Self {
-        NetworkSerializationError::StringParseError
-    }
 }
 
 fn string_to_ip(ip_address: &str) -> Option<[u8; 4]> {

@@ -1,34 +1,7 @@
-use crate::dogecoin::messages::version::IpAddress;
-use crate::dogecoin::{IntegerParsingFailure, NetworkSerializationError};
-use std::fmt::{Display, Formatter};
 use std::mem::size_of;
 
-#[derive(Debug, PartialEq)]
-pub enum CalculateSizeOfSerializedStringAndLengthBytesError {
-    StringTooLong,
-}
-
-impl Display for CalculateSizeOfSerializedStringAndLengthBytesError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CalculateSizeOfSerializedStringAndLengthBytesError::StringTooLong => {
-                write!(f, "String too long to be serialized")
-            }
-        }
-    }
-}
-
-impl std::error::Error for CalculateSizeOfSerializedStringAndLengthBytesError {}
-
-impl From<CalculateSizeOfSerializedStringAndLengthBytesError> for NetworkSerializationError {
-    fn from(value: CalculateSizeOfSerializedStringAndLengthBytesError) -> Self {
-        match value {
-            CalculateSizeOfSerializedStringAndLengthBytesError::StringTooLong => {
-                NetworkSerializationError::StringParseError
-            }
-        }
-    }
-}
+use super::*;
+use errors::*;
 
 pub fn slice_to_ip_address(slice: &[u8]) -> Option<IpAddress> {
     slice.try_into().ok()

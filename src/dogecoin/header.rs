@@ -1,51 +1,6 @@
 use super::*;
+use errors::*;
 use serializer::{slice_to_string, slice_to_u32};
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum HeaderBuildError {
-    CommandIsEmpty,
-    CommandTooLong,
-    MessageSizeParseFailure,
-    MessageTooLong(usize),
-    TooShort,
-    UnknownNetworkType,
-}
-
-impl std::fmt::Display for HeaderBuildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HeaderBuildError::CommandIsEmpty => write!(f, "Command is empty"),
-            HeaderBuildError::CommandTooLong => write!(f, "Command too long"),
-            HeaderBuildError::MessageTooLong(value) => {
-                write!(f, "Value too big for u32: {}", value)
-            }
-            HeaderBuildError::UnknownNetworkType => write!(f, "Unknown network type"),
-            HeaderBuildError::MessageSizeParseFailure => write!(f, "Message size parse failure"),
-            HeaderBuildError::TooShort => {
-                write!(f, "Passed header is too short (24 bytes are required)")
-            }
-        }
-    }
-}
-
-impl From<HeaderBuildError> for NetworkSerializationError {
-    fn from(value: HeaderBuildError) -> Self {
-        NetworkSerializationError::HeaderParseError(value)
-    }
-}
-
-impl From<NetworkSerializationError> for HeaderBuildError {
-    fn from(value: NetworkSerializationError) -> Self {
-        match value {
-            NetworkSerializationError::BufferTooShort => HeaderBuildError::TooShort,
-            NetworkSerializationError::UnknownBytes => HeaderBuildError::MessageSizeParseFailure,
-            NetworkSerializationError::HeaderParseError(e) => e,
-            NetworkSerializationError::StringParseError => HeaderBuildError::CommandTooLong,
-        }
-    }
-}
-
-impl std::error::Error for HeaderBuildError {}
 
 #[derive(Debug, PartialEq)]
 pub struct Header {

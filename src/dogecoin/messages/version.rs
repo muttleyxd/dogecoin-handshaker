@@ -1,13 +1,13 @@
+use std::mem::size_of;
+
 use super::super::*;
 
+use errors::*;
 use header::{Header, HEADER_SIZE};
 use serializer::{
     be_slice_to_u16, calculate_size_of_serialized_string_and_length_bytes, slice_to_ip_address,
     slice_to_u32, slice_to_u64, SerializeString,
 };
-use std::mem::size_of;
-
-pub type IpAddress = [u8; 16];
 
 #[derive(Debug, PartialEq)]
 pub struct IpData {
