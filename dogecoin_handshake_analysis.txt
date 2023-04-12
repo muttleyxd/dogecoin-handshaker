@@ -1,0 +1,61 @@
+note: protocol is inconsistent regarding using little-endian and big-endian
+
+---
+version - 'hello' packet from our side, peer should respond with 'verack' which is correct reply to 'version'
+
+header:
+0040   fc c1 b7 dc 76 65 72 73 69 6f 6e 00 00 00         ....version...
+0050   00 00 69 00 00 00 a2 bb 58 1c                     ..i.....X.
+
+4 bytes - 'magic' header
+12 bytes - command - char array, fill to the end with null bytes
+4 bytes - message size - little endian
+4 bytes - uint256 hash of message content - net.cpp:2794
+
+message:
+0000   7f 11 01 00| 05 00 00 00 00 00 00 00| 51 66 34 64
+0010   00 00 00 00| |01 00 00 00 00 00 00 00| 00 00 00 00
+0020   00 00 00 00 00 00 ff ff 34 4d e7 29| |ae 0c| |05 00
+0030   00 00 00 00 00 00| 00 00 00 00 00 00 00 00 00 00
+0040   00 00 00 00 00 00| 00 00| 45 df 74 af c8 94 63 f8|
+0050   13 2f 53 68 69 62 65 74 6f 73 68 69 3a 31 2e 31
+0060   34 2e 36 2f 00 00 00 00 01
+
+4 bytes - protocol version (70015 at the moment) - little endian
+8 bytes - local node services - 5 in our example - NODE_NETWORK | NODE_BLOOM - little endian
+8 bytes - unix timestamp - little endian
+26 bytes - node IP address:
+  - 8 bytes services - same as 'local node services' - 1 in our example
+  - 16 bytes IP address - IPv6/4 - in case of IPv4 - 10 null bytes, 2x 0xFF bytes, 4 bytes of IPv4
+  - 2 bytes - port - big endian
+26 bytes - our IP address - same structure as node IP address.;
+8 bytes - random nonce integer
+N bytes - string - name + version of our client (read below how to serialize it)
+4 bytes - node starting height - 0 in our case
+1 byte - relay transactions - true in our case
+
+---
+string - how to write strings into network packets:
+
+serialized string is composed of:
+- length
+- string data
+
+length can vary from 1 to 9 bytes, first byte is determining how we should behave:
+- 0-252 - length is 1 byte, string length is from 0 to 252 bytes
+- 253 - length is 3 bytes, first byte indicates that next 2 bytes will contain the actual length 
+- 254 - length is 5 bytes, first byte indicates that next 4 bytes will contain the actual length
+- 255 - length is 9 bytes, marker byte + 8 bytes actual length
+
+if length is 0, then no bytes of string are written into the buffer
+
+---
+verack - reply to 'version':
+this one is much simpler, the response consists only of header
+0000   fc c1 b7 dc 76 65 72 61 63 6b 00 00 00 00 00 00
+0010   00 00 00 00 5d f6 e0 e2
+
+4 bytes - header
+12 bytes - command - char array, fill to the end with null bytes
+4 bytes - message size - little endian - 0 in this case
+4 bytes - hash of message content - net.cpp:2794 + leveldb/util/hash.cc:22
